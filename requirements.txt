@@ -1,0 +1,34 @@
+# scg-Cosmos3 — extra deps beyond what ComfyUI core already provides.
+#
+# ComfyUI core already supplies (don't re-pin, to avoid fighting its versions):
+#   torch / torchvision / torchaudio, transformers, tokenizers, safetensors,
+#   numpy, pillow, einops, tqdm, huggingface_hub.
+#
+# IMPORTANT: Cosmos3OmniPipeline lives only in diffusers' git main (no PyPI
+# release has it yet — 0.36.0 only ships Cosmos 1/2). Install the pinned commit
+# below; it was verified to expose `diffusers.Cosmos3OmniPipeline`.
+#   pip install -U --upgrade-strategy only-if-needed \
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git@ed0711878cfed79aba2e4cf0712b2fcd8bead577"
+# Note: this also bumps `safetensors` to >=0.8.0-rc.0 (verified compatible with
+# the existing torch/transformers stack). Re-pin to a tagged release once one
+# ships with Cosmos 3.
+diffusers @ git+https://github.com/huggingface/diffusers.git@ed0711878cfed79aba2e4cf0712b2fcd8bead577
+accelerate
+huggingface_hub
+
+# Video/audio I/O used by the pipeline + export.
+av
+imageio
+imageio-ffmpeg
+
+# Cosmos ships safety guardrails; the loader auto-disables them if this isn't
+# installed (loading still succeeds). Install to actually run the safety checker.
+# cosmos_guardrail
+
+# --- Optional: transformer quantization (loader `quantization` dropdown) ---
+# nf4 (4-bit) / int8 via bitsandbytes; fp8 via optimum-quanto. The quanto fp8
+# path JIT-compiles a CUDA extension and needs the `ninja` build tool (the
+# loader adds the venv bin dir to PATH so torch can find it).
+bitsandbytes>=0.49.0
+optimum-quanto>=0.2.7
+ninja
