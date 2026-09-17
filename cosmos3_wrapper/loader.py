@@ -8,6 +8,7 @@ present in a recent ``diffusers`` build, so we import it lazily and raise a
 clear, actionable error if it's missing.
 """
 
+import json
 import os
 import sys
 import time
@@ -23,6 +24,21 @@ from .paths import (
 
 # Quantization choices exposed on the loader node. "none" keeps bf16/fp16.
 QUANTIZATION_CHOICES = ("none", "fp8", "int8", "nf4")
+
+# Which config gate-flags create submodules that need real backing weights,
+# and the parameter-name prefixes that prove those weights actually exist
+# in a saved checkpoint. A flag can be True in a checkpoint's saved config
+# while the checkpoint itself predates that submodule (or the quantization
+# script simply didn't save it) -- loading it as-is leaves those specific
+# parameters on the `meta` device with no data, and `pipe.to(device)` later
+# dies with `NotImplementedError: Cannot copy out of meta tensor; no data!`.
+# Hit in practice with Cosmos3-Nano-nf4 (config `action_gen=True`, quantized
+# against diffusers 0.39.0.dev0 -- no `action_proj_*` weights in the saved
+# checkpoint).
+_GATE_FLAG_REQUIRED_KEY_PREFIXES = {
+    "action_gen": ("action_proj_in.", "action_proj_out."),
+    "sound_gen": ("audio_proj_in.", "audio_proj_out."),
+}
 
 
 class Cosmos3PipeWrapper:
@@ -186,6 +202,87 @@ def _build_quant_config(quantization, dtype, log):
     return PipelineQuantizationConfig(quant_mapping={"transformer": cfg})
 
 
+def _collect_safetensors_keys(component_dir):
+    """Parameter keys actually saved for a component, or None if introspection fails.
+
+    Reads a sharded component's ``*.safetensors.index.json`` weight map, or a
+    single-file component's safetensors header directly -- never loads the
+    tensor data itself, just the key names.
+    """
+    index_path = os.path.join(component_dir, "diffusion_pytorch_model.safetensors.index.json")
+    if os.path.isfile(index_path):
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                index = json.load(f)
+            return set(index.get("weight_map", {}).keys())
+        except (OSError, ValueError):
+            return None
+
+    single_path = os.path.join(component_dir, "diffusion_pytorch_model.safetensors")
+    if os.path.isfile(single_path):
+        try:
+            from safetensors import safe_open
+
+            with safe_open(single_path, framework="pt") as f:
+                return set(f.keys())
+        except Exception:
+            return None
+
+    return None
+
+
+def _load_transformer_with_gate_reconciliation(model_dir, dtype, quant_config, log):
+    """Load ``Cosmos3OmniTransformer``, disabling any gate-flag whose weights are missing.
+
+    Returns the constructed transformer to hand to the pipeline's
+    ``from_pretrained(..., transformer=<this>)`` (the standard diffusers
+    pattern for overriding one component while the rest of the pipeline
+    still auto-loads normally), or ``None`` if the config already matches
+    its saved weights -- in which case the caller should let the pipeline
+    load the transformer the normal way, unmodified.
+    """
+    transformer_dir = os.path.join(model_dir, "transformer")
+    config_path = os.path.join(transformer_dir, "config.json")
+    if not os.path.isfile(config_path):
+        return None
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        return None
+
+    saved_keys = _collect_safetensors_keys(transformer_dir)
+    if saved_keys is None:
+        return None  # can't introspect the weights; don't second-guess the config
+
+    overrides = {}
+    for flag, required_prefixes in _GATE_FLAG_REQUIRED_KEY_PREFIXES.items():
+        if config.get(flag) and not any(
+            any(k.startswith(p) for k in saved_keys) for p in required_prefixes
+        ):
+            overrides[flag] = False
+
+    if not overrides:
+        return None
+
+    for flag, new_value in overrides.items():
+        log(f"transformer config has '{flag}={config.get(flag)}' but no matching "
+            f"weights in the saved checkpoint -- overriding to {new_value} "
+            "(otherwise those params stay on the meta device and pipe.to(device) "
+            "dies later). Likely quantized against an older diffusers build than "
+            "this checkpoint's config now expects.")
+
+    from diffusers import Cosmos3OmniTransformer
+
+    kwargs = {"torch_dtype": dtype}
+    if quant_config is not None:
+        tf_quant = quant_config.quant_mapping.get("transformer")
+        if tf_quant is not None:
+            kwargs["quantization_config"] = tf_quant
+    return Cosmos3OmniTransformer.from_pretrained(transformer_dir, **overrides, **kwargs)
+
+
 def load_cosmos3_pipeline(
     model_key,
     models_subdir=None,
@@ -271,8 +368,19 @@ def load_cosmos3_pipeline(
         log("cosmos_guardrail not installed -> loading with safety checker OFF. "
             "Run `pip install cosmos_guardrail` to enable it.")
 
+    reconciled_transformer = _load_transformer_with_gate_reconciliation(
+        model_dir, dtype, quant_config, log
+    )
+
     from_kwargs = {"torch_dtype": dtype, "enable_safety_checker": enable_safety}
-    if quant_config is not None:
+    if reconciled_transformer is not None:
+        # Already built (with quantization applied, if any) by the gate-
+        # reconciliation helper above -- passing quantization_config here too
+        # would be redundant (diffusers skips loading/quantizing any
+        # component supplied as a direct instance) and this repo only ever
+        # quantizes the transformer, so there's nothing else for it to apply to.
+        from_kwargs["transformer"] = reconciled_transformer
+    elif quant_config is not None:
         from_kwargs["quantization_config"] = quant_config
     try:
         pipe = PipelineClass.from_pretrained(model_dir, **from_kwargs)
