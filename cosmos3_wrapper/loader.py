@@ -20,9 +20,21 @@ from .paths import (
     is_model_present,
     transformer_is_prequantized,
 )
+from .tuned import resolve_tuned_profile
 
 # Quantization choices exposed on the loader node. "none" keeps bf16/fp16.
 QUANTIZATION_CHOICES = ("none", "fp8", "int8", "nf4")
+
+# Attention-backend choices exposed on the loader node. "auto" defers to the
+# detected GPU's tuned profile (see .tuned) if one exists, otherwise leaves
+# the pipeline's own default (native/SDPA) alone.
+ATTENTION_BACKEND_CHOICES = ("auto", "native", "flash")
+
+# torch.compile choices. "auto" defers to the tuned profile; "off" always
+# skips compiling even if the tuned profile recommends it (useful while
+# iterating on a workflow, since compile pays a real one-time cost per
+# fresh pipe object).
+TORCH_COMPILE_CHOICES = ("auto", "on", "off")
 
 
 class Cosmos3PipeWrapper:
@@ -186,6 +198,31 @@ def _build_quant_config(quantization, dtype, log):
     return PipelineQuantizationConfig(quant_mapping={"transformer": cfg})
 
 
+def _apply_tuned_runtime_settings(pipe, attention_backend, torch_compile, torch_compile_mode, log):
+    """Apply the resolved attention-backend + torch.compile choices to ``pipe.transformer``.
+
+    ``attention_backend``/``torch_compile`` are the ALREADY-RESOLVED choices
+    (not "auto" -- the caller resolves "auto" against the tuned profile
+    first), so this function just applies them.
+    """
+    transformer = getattr(pipe, "transformer", None)
+    if transformer is None:
+        return
+
+    if attention_backend and attention_backend != "native":
+        try:
+            transformer.set_attention_backend(attention_backend)
+            log(f"Attention backend set to '{attention_backend}'.")
+        except Exception as exc:
+            log(f"Could not set attention backend '{attention_backend}' ({type(exc).__name__}: {exc}) "
+                "-- leaving the pipeline's default in place.")
+
+    if torch_compile:
+        pipe.transformer = torch.compile(transformer, mode=torch_compile_mode)
+        log(f"transformer wrapped with torch.compile(mode='{torch_compile_mode}') "
+            "-- first generation call will pay a real one-time compile cost.")
+
+
 def load_cosmos3_pipeline(
     model_key,
     models_subdir=None,
@@ -196,14 +233,31 @@ def load_cosmos3_pipeline(
     auto_download=True,
     device=None,
     verbose=True,
+    attention_backend="auto",
+    torch_compile="auto",
 ):
     """Construct the Cosmos 3 generator pipeline and apply runtime options.
 
     If the checkpoint is missing and ``auto_download`` is set, it's fetched from
     HuggingFace first (first run only; resumable). Returns a
     :class:`Cosmos3PipeWrapper`.
+
+    ``attention_backend``/``torch_compile`` (one of ``ATTENTION_BACKEND_CHOICES``/
+    ``TORCH_COMPILE_CHOICES`` in this module) default to "auto": defer to the
+    detected GPU's tuned profile (``.tuned``) if one exists, otherwise leave
+    the pipeline's own defaults alone. An explicit value always overrides the
+    tuned profile.
     """
     info = model_info(model_key)
+    tuned_profile = resolve_tuned_profile(verbose=verbose)
+
+    resolved_attn_backend = (
+        tuned_profile.attn_backend if attention_backend == "auto" else attention_backend
+    )
+    if torch_compile == "auto":
+        resolved_torch_compile = tuned_profile.torch_compile
+    else:
+        resolved_torch_compile = torch_compile == "on"
 
     def log(msg):
         if verbose:
@@ -298,6 +352,10 @@ def load_cosmos3_pipeline(
                 raise
             log(f"Skipping .to({device}) for quantized pipeline ({type(exc).__name__}: it places itself).")
 
+    _apply_tuned_runtime_settings(
+        pipe, resolved_attn_backend, resolved_torch_compile, tuned_profile.torch_compile_mode, log
+    )
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         log(f"CUDA mem allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
@@ -313,5 +371,9 @@ def load_cosmos3_pipeline(
             "disable_guardrails": bool(disable_guardrails),
             "precision": precision,
             "quantization": quantization,
+            "attention_backend": resolved_attn_backend,
+            "torch_compile": resolved_torch_compile,
+            "torch_compile_mode": tuned_profile.torch_compile_mode if resolved_torch_compile else None,
+            "tuned_variant": tuned_profile.variant,
         },
     )

@@ -69,6 +69,25 @@ class Cosmos3ModelLoader:
                     "BOOLEAN",
                     {"default": False, "tooltip": "Best-effort: skip Cosmos safety guardrails (prompt screen / face blur)."},
                 ),
+                "attention_backend": (
+                    list(_loader.ATTENTION_BACKEND_CHOICES),
+                    {
+                        "default": "auto",
+                        "tooltip": "'auto' uses the detected GPU's tuned profile if one exists "
+                        "(see tuned/devices/*.conf), otherwise leaves the pipeline default "
+                        "(native/SDPA) alone. 'flash' needs a working flash_attn install.",
+                    },
+                ),
+                "torch_compile": (
+                    list(_loader.TORCH_COMPILE_CHOICES),
+                    {
+                        "default": "auto",
+                        "tooltip": "'auto' follows the detected GPU's tuned profile. 'on' always "
+                        "compiles the transformer (mode='reduce-overhead') -- real one-time "
+                        "compile cost on first generation with this loaded pipe, faster steady-"
+                        "state after. 'off' never compiles even if the tuned profile recommends it.",
+                    },
+                ),
             },
         }
 
@@ -77,7 +96,17 @@ class Cosmos3ModelLoader:
     FUNCTION = "load"
     CATEGORY = CATEGORY
 
-    def load(self, model, precision, quantization, cpu_offload, auto_download, disable_guardrails):
+    def load(
+        self,
+        model,
+        precision,
+        quantization,
+        cpu_offload,
+        auto_download,
+        disable_guardrails,
+        attention_backend,
+        torch_compile,
+    ):
         wrapper = _loader.load_cosmos3_pipeline(
             model_key=model,
             precision=precision,
@@ -85,6 +114,8 @@ class Cosmos3ModelLoader:
             cpu_offload=cpu_offload,
             disable_guardrails=disable_guardrails,
             auto_download=auto_download,
+            attention_backend=attention_backend,
+            torch_compile=torch_compile,
         )
         return (wrapper,)
 
