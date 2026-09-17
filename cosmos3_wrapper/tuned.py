@@ -106,7 +106,7 @@ def resolve_tuned_profile(verbose=True):
 
     def log(msg):
         if verbose:
-            print(f"[scg-Cosmos3/tuned] {msg}")
+            print(f"[scg-Cosmos3-gb10/tuned] {msg}")
 
     device_name = _detect_device_name()
     if not device_name:

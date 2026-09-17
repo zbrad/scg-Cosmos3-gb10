@@ -184,7 +184,7 @@ def _make_step_callback(steps):
             comfy.model_management.throw_exception_if_processing_interrupted()
         except Exception:
             pass
-        print(f"[scg-Cosmos3] step {step_index + 1}/{steps}", flush=True)
+        print(f"[scg-Cosmos3-gb10] step {step_index + 1}/{steps}", flush=True)
         if pbar is not None:
             pbar.update_absolute(step_index + 1, steps)
         return callback_kwargs

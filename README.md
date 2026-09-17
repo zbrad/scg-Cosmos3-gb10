@@ -1,9 +1,16 @@
-# scg-Cosmos3
+# scg-Cosmos3-gb10
 
 ComfyUI wrapper nodes for **NVIDIA Cosmos 3** — the open *omnimodal world model*
 family ([NVIDIA/cosmos](https://github.com/NVIDIA/cosmos)). These nodes wrap the
 **generator** surface (text-to-image, text-to-video, image-to-video, with
 optional synchronized sound) via the HuggingFace Diffusers `Cosmos3OmniPipeline`.
+
+This is a fork of [`SanDiegoDude/scg-Cosmos3`](https://github.com/SanDiegoDude/scg-Cosmos3)
+that adds a validated **GB10 (NVIDIA DGX Spark) runtime-tuning profile** — see
+[GB10-tuned profile](#gb10-tuned-profile) below. **If you're not on GB10
+hardware, use the upstream repo instead** — the tuning profile only activates
+on a detected GB10 device (falls back to stock behavior otherwise, but there's
+no reason to carry the fork if it'll never engage for you).
 
 ---
 
@@ -97,10 +104,37 @@ modes, and only when `generate_sound` is on (default on). Connect the node's
 
 ```bash
 cd <ComfyUI>/custom_nodes
-git clone https://github.com/SanDiegoDude/scg-Cosmos3
-cd scg-Cosmos3
+git clone https://github.com/zbrad/scg-Cosmos3-gb10
+cd scg-Cosmos3-gb10
 pip install -r requirements.txt
 ```
+
+(Named `scg-Cosmos3-gb10` deliberately, not `scg-Cosmos3` — so it can sit
+alongside an upstream `scg-Cosmos3` checkout without a folder collision, and
+so it's unambiguous which one you have installed. ComfyUI's node registry
+doesn't care about the folder name either way; the node IDs are identical to
+upstream's.)
+
+### System dependency (GB10 only)
+
+The tuned torch wheel this profile is validated against needs one apt
+package to import at all on a fresh host — install it before `pip install`:
+
+```bash
+sudo apt install -y libopenblas0-pthread
+```
+
+That's the only OS-level package this repo itself needs. The harder
+dependency-pinning problem — keeping the tuned `torch`/`flash_attn` wheels
+from being silently overwritten by a plain PyPI build when some other
+package's dependency resolution runs — isn't solved by an apt/distro
+package; it's solved by a `constraints.txt` + `pip.conf` pin on the venv
+(the pattern this pins against is `gpu_tuned_protect_torch_pin` in
+[`zbrad/tuned-common`](https://github.com/zbrad/tuned-common)). Whether to
+go further and publish an actual `.deb` bundling the tuned wheels + this
+pinning setup for one-command fresh-host provisioning is an open question,
+not yet done — it would trade a new artifact to build/publish on every
+torch bump against a nicer one-line install.
 
 ## Gotchas
 
@@ -138,13 +172,41 @@ pip install -r requirements.txt
   placement defensively; if you script against the pipeline directly, don't call
   `.to(some_dtype)` on a quantized model.
 
+## GB10-tuned profile
+
+The **Cosmos3 Model Loader** node has two extra inputs beyond upstream:
+
+- `attention_backend` (`auto`/`native`/`flash`) — `auto` defers to the
+  detected GPU's tuned profile (`tuned/devices/*.conf`) if one exists,
+  otherwise leaves the pipeline's native/SDPA default alone.
+- `torch_compile` (`auto`/`on`/`off`) — same deference pattern; `on` always
+  compiles the transformer (`mode="reduce-overhead"`), a real one-time cost
+  on the first generation with a freshly-loaded pipe, faster steady-state
+  after.
+
+On a detected **NVIDIA GB10** (`tuned/devices/gb10.conf`), both default on
+(`auto` → flash attention + `torch.compile`). Validated 2026-09-17 against
+`Cosmos3-Nano-nf4` and `Cosmos3-Super-Text2Image-nf4`:
+
+| Model | Steady-state step time | vs. native/SDPA, no compile |
+|---|---|---|
+| Cosmos3-Nano-nf4 | 41.2s/it | ~18% faster |
+| Cosmos3-Super-Text2Image-nf4 | ~164-165s/it | ~13.7% faster |
+
+Any other GPU falls back to today's untouched behavior (no tuned profile =
+no change from upstream) — untested hardware never gets a guessed setting.
+`cosmos3_wrapper/tuned.py`'s `verify_venv_pinning()` also warns (doesn't
+block) at load time if the installed torch/flash_attn don't look like the
+tuned build this profile was validated against, so a silent fallback to a
+vanilla PyPI wheel doesn't masquerade as the tuned result.
+
 ## Roll your own quantized checkpoint
 
 `quantize_save.py` bakes a pre-quantized, self-contained pipeline so you (or
 your users) never pay the on-the-fly quant cost:
 
 ```bash
-cd <ComfyUI>/custom_nodes/scg-Cosmos3
+cd <ComfyUI>/custom_nodes/scg-Cosmos3-gb10
 python quantize_save.py --model Cosmos3-Nano --quant nf4
 # optionally publish to the Hub (must be logged in: `hf auth login`):
 python quantize_save.py --model Cosmos3-Super --quant nf4 --push <user>/Cosmos3-Super-nf4

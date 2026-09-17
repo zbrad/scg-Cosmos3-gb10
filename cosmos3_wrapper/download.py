@@ -46,7 +46,9 @@ def download_model(model_key, models_subdir=None, verbose=True):
     os.makedirs(target, exist_ok=True)
 
     if verbose:
-        print(f"[scg-Cosmos3] Downloading {repo_id} ({info['params']}) -> {target}")
+        print(
+            f"[scg-Cosmos3-gb10] Downloading {repo_id} ({info['params']}) -> {target}"
+        )
 
     from huggingface_hub import snapshot_download
 
@@ -63,5 +65,5 @@ def download_model(model_key, models_subdir=None, verbose=True):
             "layout may differ from what the loader expects. Check the HF repo."
         )
     if verbose:
-        print(f"[scg-Cosmos3] {model_key} ready at {target}")
+        print(f"[scg-Cosmos3-gb10] {model_key} ready at {target}")
     return target

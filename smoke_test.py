@@ -5,7 +5,7 @@ server, so a CUDA fault aborts only this process (and gives a clean traceback
 when run with CUDA_LAUNCH_BLOCKING=1).
 
 Usage (from the ComfyUI venv):
-    cd <ComfyUI>/custom_nodes/scg-Cosmos3
+    cd <ComfyUI>/custom_nodes/scg-Cosmos3-gb10
     CUDA_LAUNCH_BLOCKING=1 <ComfyUI>/venv/bin/python smoke_test.py
 
 Knobs are env vars so we can sweep without editing the file:

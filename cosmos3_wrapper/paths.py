@@ -18,7 +18,7 @@ import math
 import os
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PACKAGE_ROOT = os.path.dirname(THIS_DIR)  # the scg-Cosmos3 custom-node directory
+PACKAGE_ROOT = os.path.dirname(THIS_DIR)  # the scg-Cosmos3-gb10 custom-node directory
 
 # Default sub-directory (under ComfyUI/models) that holds the Cosmos 3 models.
 DEFAULT_MODELS_SUBDIR = "Cosmos3"

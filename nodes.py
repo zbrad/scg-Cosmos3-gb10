@@ -14,7 +14,7 @@ from .cosmos3_wrapper import paths as _paths
 from .cosmos3_wrapper import loader as _loader
 from .cosmos3_wrapper import inference as _inf
 
-CATEGORY = "scg-Cosmos3"
+CATEGORY = "scg-Cosmos3-gb10"
 
 _SEED_MAX = 0xFFFFFFFFFFFFFFFF
 

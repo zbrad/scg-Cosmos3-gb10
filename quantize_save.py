@@ -8,7 +8,7 @@ a pre-quantized dir (transformer/config.json carries a quantization_config) and
 loads it directly.
 
 Usage (from the ComfyUI venv):
-    cd <ComfyUI>/custom_nodes/scg-Cosmos3
+    cd <ComfyUI>/custom_nodes/scg-Cosmos3-gb10
     python quantize_save.py --model Cosmos3-Nano --quant nf4
     # custom output dir:
     python quantize_save.py --model Cosmos3-Super --quant nf4 --out /data/Cosmos3-Super-nf4
