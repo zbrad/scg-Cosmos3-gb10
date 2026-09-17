@@ -104,10 +104,17 @@ modes, and only when `generate_sound` is on (default on). Connect the node's
 
 ```bash
 cd <ComfyUI>/custom_nodes
-git clone https://github.com/zbrad/scg-Cosmos3-gb10
+git clone -b tuned-builds https://github.com/zbrad/scg-Cosmos3-gb10
 cd scg-Cosmos3-gb10
 pip install -r requirements.txt
 ```
+
+**The `-b tuned-builds` is required.** This repo's default branch (`main`)
+is kept as an untouched mirror of upstream's initial commit, matching the
+convention every repo in the GB10 tuned-builds fleet uses — the actual
+GB10-tuned work (this README included) only exists on `tuned-builds`. A
+plain `git clone` with no branch flag gets you `main`: the bare upstream
+node with none of this.
 
 (Named `scg-Cosmos3-gb10` deliberately, not `scg-Cosmos3` — so it can sit
 alongside an upstream `scg-Cosmos3` checkout without a folder collision, and
