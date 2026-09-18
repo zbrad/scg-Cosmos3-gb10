@@ -12,6 +12,13 @@ hardware, use the upstream repo instead** — the tuning profile only activates
 on a detected GB10 device (falls back to stock behavior otherwise, but there's
 no reason to carry the fork if it'll never engage for you).
 
+`main` is kept in sync with upstream automatically
+([`.github/workflows/sync-upstream.yml`](.github/workflows/sync-upstream.yml),
+weekly + on-demand): a clean merge is pushed straight to `main`; a conflicting
+one instead files a GitHub issue for manual resolution rather than pushing
+anything broken. `main` is always merge-based, never rebased, so `git pull`
+here never needs a force-push.
+
 ---
 
 ## ⚠️ Read this first: these models are huge

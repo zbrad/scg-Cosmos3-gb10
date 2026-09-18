@@ -1,0 +1,96 @@
+name: Sync main with upstream
+
+# Keeps main caught up with SanDiegoDude/scg-Cosmos3 (merge, never rebase --
+# a rebase would force-push and break anyone who's already pulled main).
+# On a clean merge, also fast-forwards tuned-builds to match main, since
+# tuned-builds is kept branch-name-consistent with the rest of the
+# tuned-builds fleet but carries no commits of its own (see that repo's
+# project memory: project_repo_and_branch_rename.md, "tuned-builds merged
+# into main"). On a conflicting merge, opens (or comments on) a GitHub
+# issue labeled upstream-sync instead of pushing anything -- a human
+# resolves it manually; see the runbook in that issue.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"  # weekly, Monday 06:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/SanDiegoDude/scg-Cosmos3.git
+          git fetch upstream main
+
+      - name: Attempt merge
+        id: merge
+        run: |
+          if [ -z "$(git log main..upstream/main --oneline)" ]; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream/main."
+            exit 0
+          fi
+          if git merge upstream/main --no-edit; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push main
+        if: steps.merge.outputs.changed == 'true'
+        run: git push origin main
+
+      - name: Fast-forward tuned-builds to match main
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          git fetch origin tuned-builds
+          git checkout -B tuned-builds origin/tuned-builds
+          if git merge --ff-only main; then
+            git push origin tuned-builds
+          else
+            echo "::warning::tuned-builds has commits main doesn't -- skipped the fast-forward, needs a manual look."
+          fi
+
+      - name: File a conflict issue
+        if: steps.merge.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY="Automated weekly sync from [SanDiegoDude/scg-Cosmos3](https://github.com/SanDiegoDude/scg-Cosmos3) couldn't merge \`upstream/main\` into this repo's \`main\` cleanly (run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          Resolve manually:
+          \`\`\`
+          git checkout main
+          git fetch upstream main   # or: git remote add upstream https://github.com/SanDiegoDude/scg-Cosmos3.git
+          git merge upstream/main
+          # resolve conflicts, then:
+          git push origin main
+          git checkout tuned-builds && git merge --ff-only main && git push origin tuned-builds
+          \`\`\`"
+          existing=$(gh issue list --search "Upstream sync conflict in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$BODY"
+          else
+            gh issue create --title "Upstream sync conflict on main" --body "$BODY" --label "upstream-sync"
+          fi
