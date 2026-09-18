@@ -1,4 +1,4 @@
-# scg-Cosmos3-gb10
+# scg-Cosmos3-tuned
 
 ComfyUI wrapper nodes for **NVIDIA Cosmos 3** — the open *omnimodal world model*
 family ([NVIDIA/cosmos](https://github.com/NVIDIA/cosmos)). These nodes wrap the
@@ -6,11 +6,14 @@ family ([NVIDIA/cosmos](https://github.com/NVIDIA/cosmos)). These nodes wrap the
 optional synchronized sound) via the HuggingFace Diffusers `Cosmos3OmniPipeline`.
 
 This is a fork of [`SanDiegoDude/scg-Cosmos3`](https://github.com/SanDiegoDude/scg-Cosmos3)
-that adds a validated **GB10 (NVIDIA DGX Spark) runtime-tuning profile** — see
-[GB10-tuned profile](#gb10-tuned-profile) below. **If you're not on GB10
-hardware, use the upstream repo instead** — the tuning profile only activates
-on a detected GB10 device (falls back to stock behavior otherwise, but there's
-no reason to carry the fork if it'll never engage for you).
+that adds validated per-GPU **runtime-tuning profiles** — see
+[Tuned profiles](#tuned-profiles) below. **NVIDIA GB10 (DGX Spark)** is
+validated today; RTX 40-series and RTX 50-series profiles are planned (see
+that repo's project memory for status). **If there's no tuned profile for
+your hardware yet, the upstream repo is just as good for you** — an
+unmatched GPU falls back to stock behavior (no change from upstream), so
+there's no reason to carry the fork until its profile actually engages for
+your card.
 
 `main` is kept in sync with upstream automatically
 ([`.github/workflows/sync-upstream.yml`](.github/workflows/sync-upstream.yml),
@@ -111,8 +114,8 @@ modes, and only when `generate_sound` is on (default on). Connect the node's
 
 ```bash
 cd <ComfyUI>/custom_nodes
-git clone https://github.com/zbrad/scg-Cosmos3-gb10
-cd scg-Cosmos3-gb10
+git clone https://github.com/zbrad/scg-Cosmos3-tuned
+cd scg-Cosmos3-tuned
 pip install -r requirements.txt
 ```
 
@@ -124,7 +127,7 @@ no reason to keep it on a separate branch here. `tuned-builds` still exists
 and stays fast-forwarded to `main` for fleet-naming consistency, but you
 don't need to reference it.)
 
-(Named `scg-Cosmos3-gb10` deliberately, not `scg-Cosmos3` — so it can sit
+(Named `scg-Cosmos3-tuned` deliberately, not `scg-Cosmos3` — so it can sit
 alongside an upstream `scg-Cosmos3` checkout without a folder collision, and
 so it's unambiguous which one you have installed. ComfyUI's node registry
 doesn't care about the folder name either way; the node IDs are identical to
@@ -187,7 +190,7 @@ torch bump against a nicer one-line install.
   placement defensively; if you script against the pipeline directly, don't call
   `.to(some_dtype)` on a quantized model.
 
-## GB10-tuned profile
+## Tuned profiles
 
 The **Cosmos3 Model Loader** node has two extra inputs beyond upstream:
 
@@ -215,13 +218,21 @@ block) at load time if the installed torch/flash_attn don't look like the
 tuned build this profile was validated against, so a silent fallback to a
 vanilla PyPI wheel doesn't masquerade as the tuned result.
 
+**RTX 40-series and RTX 50-series profiles are planned, not yet added** —
+blocked on published tuned `torch`/`flash_attn` wheels for those
+architectures (a fleet-level prerequisite owned by the `pytorch`/
+`flash-attention` repos, not this one) plus VRAM-fit research for consumer
+card sizes. Don't assume the GB10 numbers above transfer once they land —
+re-measured per architecture, same as GB10 was re-measured against LTX-2.5's
+earlier (different) finding.
+
 ## Roll your own quantized checkpoint
 
 `quantize_save.py` bakes a pre-quantized, self-contained pipeline so you (or
 your users) never pay the on-the-fly quant cost:
 
 ```bash
-cd <ComfyUI>/custom_nodes/scg-Cosmos3-gb10
+cd <ComfyUI>/custom_nodes/scg-Cosmos3-tuned
 python quantize_save.py --model Cosmos3-Nano --quant nf4
 # optionally publish to the Hub (must be logged in: `hf auth login`):
 python quantize_save.py --model Cosmos3-Super --quant nf4 --push <user>/Cosmos3-Super-nf4

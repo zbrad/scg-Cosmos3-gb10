@@ -1,4 +1,4 @@
-# scg-Cosmos3-gb10 — extra deps beyond what ComfyUI core already provides.
+# scg-Cosmos3-tuned — extra deps beyond what ComfyUI core already provides.
 #
 # ComfyUI core already supplies (don't re-pin, to avoid fighting its versions):
 #   torch / torchvision / torchaudio, transformers, tokenizers, safetensors,

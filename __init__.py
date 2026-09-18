@@ -1,4 +1,4 @@
-"""scg-Cosmos3-gb10 — ComfyUI wrapper nodes for NVIDIA Cosmos 3 generators.
+"""scg-Cosmos3-tuned — ComfyUI wrapper nodes for NVIDIA Cosmos 3 generators.
 
 GB10-tuned fork of https://github.com/SanDiegoDude/scg-Cosmos3 — adds a
 per-GPU runtime-tuning profile (attention backend + torch.compile); see

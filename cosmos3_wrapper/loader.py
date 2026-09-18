@@ -261,7 +261,7 @@ def load_cosmos3_pipeline(
 
     def log(msg):
         if verbose:
-            print(f"[scg-Cosmos3-gb10] {msg}")
+            print(f"[scg-Cosmos3-tuned] {msg}")
 
     if not is_model_present(model_key, models_subdir):
         target = resolve_model_dir(model_key, models_subdir)
